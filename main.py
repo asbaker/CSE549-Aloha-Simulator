@@ -25,9 +25,7 @@ class PureNode:
         self.nextTransmit = t + random.expovariate(BACKOFF_MEAN)
 
 
-
-
-class SlottedStrictNode:
+class SlottedNode:
     def __init__(self, name):
         self.nextTransmit = 0
         self.transmitting = False
@@ -82,7 +80,7 @@ class Simulation:
         return capacity
 
     def slottedAloha(self, length, numNodes=4, output=False):
-        nodes = self.getNodes(SlottedStrictNode, numNodes)
+        nodes = self.getNodes(SlottedNode, numNodes)
         successfulTransmissions = 0
 
         for t in range(0, length):
@@ -105,7 +103,7 @@ class Simulation:
         return capacity
 
     def slottedAlohaSelfish(self, length, numNodes=4, output=False):
-        nodes = self.getNodes(SlottedStrictNode, numNodes-2)
+        nodes = self.getNodes(SlottedNode, numNodes-2)
         nodes.append(PureNode("s"))
         nodes.append(PureNode("s"))
 
