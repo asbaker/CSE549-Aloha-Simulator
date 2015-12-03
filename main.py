@@ -6,11 +6,9 @@ import sys
 FRAME_SIZE = 5
 SIMULATION_LENGTH = 500
 SIMULATIONS = 100
-BACKOFF_MEAN = 1.0/FRAME_SIZE
 
 class PureNode:
     def __init__(self, name):
-        self.backedOff = False
         self.nextTransmit = 0
         self.transmitting = False
         self.name = name
@@ -19,7 +17,6 @@ class PureNode:
 
     def transmit(self, t):
         if self.nextTransmit <= t:
-            self.backedOff = False
             self.transmitting = random.uniform(0,1) < self.probabilityXmit
 
             if self.transmitting:
@@ -31,15 +28,9 @@ class PureNode:
 
         return self.transmitting
 
-    def backoff(self, t):
-        if not self.backedOff:
-            self.nextTransmit = self.nextTransmit + int(round(random.expovariate(BACKOFF_MEAN)))
-            self.backedOff = True
-
 
 class SlottedNode:
     def __init__(self, name):
-        self.backedOff = False
         self.nextTransmit = 0
         self.transmitting = False
         self.name = name
@@ -48,17 +39,12 @@ class SlottedNode:
 
     def transmit(self, t):
         if t % FRAME_SIZE == 0 and self.nextTransmit <= t:
-            self.backedOff = False
             self.nextTransmit = t + FRAME_SIZE
             self.transmitting = random.uniform(0,1) < self.probabilityXmit
 
         self.history.append(self.transmitting)
         return self.transmitting
 
-    def backoff(self, t):
-        if not self.backedOff:
-            self.nextTransmit = self.nextTransmit + int(round(random.expovariate(BACKOFF_MEAN)))
-            self.backedOff = True
 
 class Simulation:
     def repeatSim(self, iterations, func, *args):
@@ -82,9 +68,6 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            # elif xmit.count(True) > 1:
-            #     for n in nodes:
-            #         n.backoff(t)
 
         capacity = 1.0*successfulTransmissions/length
 
@@ -105,9 +88,6 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            # elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
-            #     for n in nodes:
-            #         n.backoff(t)
 
         capacity = 1.0*successfulTransmissions/length
 
@@ -131,10 +111,6 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            # elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
-            #     for n in nodes:
-            #         n.backoff(t)
-            # elif xmit.count(True) > 1:
 
         capacity = 1.0*successfulTransmissions/length
 
