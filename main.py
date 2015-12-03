@@ -13,11 +13,10 @@ class PureNode:
         self.transmitting = False
         self.name = name
         self.history = []
-        self.probabilityXmit = 0.5
 
     def transmit(self, t):
         if self.nextTransmit <= t:
-            self.transmitting = random.uniform(0,1) < self.probabilityXmit
+            self.transmitting = random.uniform(0,1) < 0.5
 
             if self.transmitting:
                 self.nextTransmit = t + FRAME_SIZE
@@ -35,12 +34,11 @@ class SlottedNode:
         self.transmitting = False
         self.name = name
         self.history = []
-        self.probabilityXmit = 0.75
 
     def transmit(self, t):
         if t % FRAME_SIZE == 0 and self.nextTransmit <= t:
             self.nextTransmit = t + FRAME_SIZE
-            self.transmitting = random.uniform(0,1) < self.probabilityXmit
+            self.transmitting = random.uniform(0,1) < 0.75
 
         self.history.append(self.transmitting)
         return self.transmitting
