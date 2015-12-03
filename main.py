@@ -1,6 +1,7 @@
 #!/bin/python
 import random
 import numpy as np
+import sys
 
 FRAME_SIZE = 5
 SIMULATION_LENGTH = 500
@@ -9,41 +10,55 @@ BACKOFF_MEAN = 1.0/FRAME_SIZE
 
 class PureNode:
     def __init__(self, name):
+        self.backedOff = False
         self.nextTransmit = 0
         self.transmitting = False
         self.name = name
         self.history = []
+        self.probabilityXmit = 0.5
 
     def transmit(self, t):
         if self.nextTransmit <= t:
-            self.nextTransmit = t + random.randint(1,10)
-            self.transmitting = random.randint(1, 10) > 5
+            self.backedOff = False
+            self.transmitting = random.uniform(0,1) < self.probabilityXmit
+
+            if self.transmitting:
+                self.nextTransmit = t + FRAME_SIZE
+            else:
+                self.nextTransmit = t + 1
+
         self.history.append(self.transmitting)
+
         return self.transmitting
 
     def backoff(self, t):
-        self.nextTransmit = t + random.expovariate(BACKOFF_MEAN)
+        if not self.backedOff:
+            self.nextTransmit = self.nextTransmit + int(round(random.expovariate(BACKOFF_MEAN)))
+            self.backedOff = True
 
 
 class SlottedNode:
     def __init__(self, name):
+        self.backedOff = False
         self.nextTransmit = 0
         self.transmitting = False
         self.name = name
         self.history = []
+        self.probabilityXmit = 0.75
 
     def transmit(self, t):
-        if t % FRAME_SIZE == 0:
-            self.transmitting = False
-
         if t % FRAME_SIZE == 0 and self.nextTransmit <= t:
-            self.nextTransmit = t + random.randint(1,10)
-            self.transmitting = random.randint(1, 10) > 5
+            self.backedOff = False
+            self.nextTransmit = t + FRAME_SIZE
+            self.transmitting = random.uniform(0,1) < self.probabilityXmit
+
         self.history.append(self.transmitting)
         return self.transmitting
 
     def backoff(self, t):
-        self.nextTransmit = t + random.expovariate(BACKOFF_MEAN)
+        if not self.backedOff:
+            self.nextTransmit = self.nextTransmit + int(round(random.expovariate(BACKOFF_MEAN)))
+            self.backedOff = True
 
 class Simulation:
     def repeatSim(self, iterations, func, *args):
@@ -52,10 +67,10 @@ class Simulation:
             capacity.append(func(*args))
         return capacity
 
-    def getNodes(self, nodetype, count):
+    def getNodes(self, nodetype, count, startChar=97):
         nodes = []
         for i in range(0, count):
-            nodes.append(nodetype(chr(97+i)))
+            nodes.append(nodetype(chr(startChar+i)))
         return nodes
 
     def pureAloha(self, length, numNodes=4, output=False):
@@ -67,14 +82,14 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            elif xmit.count(True) > 1:
-                for n in nodes:
-                    n.backoff(t)
+            # elif xmit.count(True) > 1:
+            #     for n in nodes:
+            #         n.backoff(t)
 
         capacity = 1.0*successfulTransmissions/length
 
         if output:
-            print "**************** Pure ALOHA (" + str(capacity) + ") ************** "
+            print "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Pure ALOHA (" + str(capacity) + ") ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
             self.printHistory(nodes)
 
         return capacity
@@ -90,22 +105,22 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
-                for n in nodes:
-                    n.backoff(t)
+            # elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
+            #     for n in nodes:
+            #         n.backoff(t)
 
         capacity = 1.0*successfulTransmissions/length
 
         if output:
-            print "**************** Slotted ALOHA (" + str(capacity) + ") ************** "
-            self.printHistory(nodes)
+            print "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Slotted ALOHA (" + str(capacity) + ") ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+            self.printHistory(nodes, True)
 
         return capacity
 
-    def slottedAlohaSelfish(self, length, numNodes=4, output=False):
-        nodes = self.getNodes(SlottedNode, numNodes-2)
-        nodes.append(PureNode("s"))
-        nodes.append(PureNode("s"))
+    def slottedAlohaSelfish(self, length, numSlottedNodes=2, numSelfishNodes=2, output=False):
+        nodes = []
+        nodes = nodes + self.getNodes(SlottedNode, numSlottedNodes)
+        nodes = nodes + self.getNodes(PureNode, numSelfishNodes, 97+numSlottedNodes)
 
         successfulTransmissions = 0
 
@@ -116,31 +131,40 @@ class Simulation:
 
             if xmit.count(True) == 1:
                 successfulTransmissions = successfulTransmissions + 1
-            elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
-                for n in nodes:
-                    n.backoff(t)
+            # elif xmit.count(True) > 1 and t % FRAME_SIZE == 0:
+            #     for n in nodes:
+            #         n.backoff(t)
+            # elif xmit.count(True) > 1:
 
         capacity = 1.0*successfulTransmissions/length
 
         if output:
-            print "**************** Slotted ALOHA With Selfish Nodes (" + str(capacity) + ") ************** "
-            self.printHistory(nodes)
+            print "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Slotted ALOHA With Selfish Nodes (" + str(capacity) + ") ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+            self.printHistory(nodes, True)
 
         return capacity
 
-    def printHistory(self, nodes):
+    def printHistory(self, nodes, slots=False):
         time = len(nodes[0].history)
-        print "t =",
+        print "t = ",
 
         for i in range(1, time+1):
-            print "%02d" % i,
+            sys.stdout.write("%02d" % i)
+            if slots and i % FRAME_SIZE == 0:
+                sys.stdout.write("|")
+            else:
+                sys.stdout.write(" ")
 
-        print "\n"
+        sys.stdout.write("\n")
         for node in nodes:
-            print node.name + " =",
-            for h in node.history:
-                print ("**" if h else "  "),
-            print "\n"
+            print node.name + " = ",
+            for i, h in enumerate(node.history):
+                sys.stdout.write("**" if h else "  ")
+                if slots and (i+1) % FRAME_SIZE == 0:
+                    sys.stdout.write("|")
+                else:
+                    sys.stdout.write(" ")
+            sys.stdout.write("\n")
 
 
 
@@ -149,26 +173,39 @@ sim = Simulation()
 
 print "(Capacity numbers are computed using " + str(SIMULATIONS) + " simulations and " + str(SIMULATION_LENGTH) + " ticks)"
 
-sim.pureAloha(40, 4, True)
+sim.pureAloha(40, 2, True)
+print "^" * 125
+print "Pure Aloha Capacity for 2 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 2))
+print "Pure Aloha Capacity for 3 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 3))
 print "Pure Aloha Capacity for 4 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 4))
 print "Pure Aloha Capacity for 8 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 8))
-print "Pure Aloha Capacity for 12 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 12))
-print "Pure Aloha Capacity for 16 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.pureAloha, SIMULATION_LENGTH, 16))
-print "***********************\n"
+print "^" * 125 + "\n"
 
-sim.slottedAloha(40, 4, True)
+sim.slottedAloha(40, 2, True)
+print "^" * 125
+print "Slotted Aloha Capacity for 2 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 2))
+print "Slotted Aloha Capacity for 3 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 3))
 print "Slotted Aloha Capacity for 4 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 4))
 print "Slotted Aloha Capacity for 8 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 8))
-print "Slotted Aloha Capacity for 12 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 12))
-print "Slotted Aloha Capacity for 16 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAloha, SIMULATION_LENGTH, 16))
-print "***********************\n"
+print "^" * 125 + "\n"
 
-sim.slottedAlohaSelfish(40, 4, True)
-print "Slotted Aloha - Selfish Node Capacity for 4 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 4))
-print "Slotted Aloha - Selfish Node Capacity for 8 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 8))
-print "Slotted Aloha - Selfish Node Capacity for 12 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 12))
-print "Slotted Aloha - Selfish Node Capacity for 16 Nodes: ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 16))
-print "***********************\n"
+sim.slottedAlohaSelfish(40, 1, 1, True)
+print "^" * 125
+print "Slotted Aloha - Selfish Node Capacity for 2 Nodes (1/1): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 1, 1))
+print "Slotted Aloha - Selfish Node Capacity for 3 Nodes (2/1): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 2, 1))
+print "Slotted Aloha - Selfish Node Capacity for 3 Nodes (1/2): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 1, 2))
+print "Slotted Aloha - Selfish Node Capacity for 4 Nodes (3/1): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 3, 1))
+print "Slotted Aloha - Selfish Node Capacity for 4 Nodes (2/2): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 2, 2))
+print "Slotted Aloha - Selfish Node Capacity for 4 Nodes (1/3): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 1, 3))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (7/1): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 7, 1))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (6/2): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 6, 2))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (5/3): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 5, 3))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (4/4): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 4, 4))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (3/5): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 3, 5))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (2/6): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 2, 6))
+print "Slotted Aloha - Selfish Node Capacity for 8 Nodes (1/7): ", np.mean(sim.repeatSim(SIMULATIONS, sim.slottedAlohaSelfish, SIMULATION_LENGTH, 1, 7))
+print "^" * 125 + "\n"
+
 
 
 
@@ -176,53 +213,44 @@ print "***********************\n"
 
 # OUTPUT:
 # (Capacity numbers are computed using 100 simulations and 500 ticks)
-# **************** Pure ALOHA (0.15) **************
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Pure ALOHA (0.2) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 # t = 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
+# a = ** ** ** ** **       ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **             ** ** ** ** ** ** ** ** **
+# b = ** ** ** ** ** ** ** ** ** **    ** ** ** ** **    ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Pure Aloha Capacity for 2 Nodes:  0.28332
+# Pure Aloha Capacity for 3 Nodes:  0.0726
+# Pure Aloha Capacity for 4 Nodes:  0.01528
+# Pure Aloha Capacity for 8 Nodes:  0.0001
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# a =                         ** ** ** ** ** ** **                      ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Slotted ALOHA (0.375) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# t = 01 02 03 04 05|06 07 08 09 10|11 12 13 14 15|16 17 18 19 20|21 22 23 24 25|26 27 28 29 30|31 32 33 34 35|36 37 38 39 40|
+# a = ** ** ** ** **|              |** ** ** ** **|** ** ** ** **|              |** ** ** ** **|** ** ** ** **|** ** ** ** **|
+# b = ** ** ** ** **|** ** ** ** **|              |** ** ** ** **|** ** ** ** **|** ** ** ** **|** ** ** ** **|** ** ** ** **|
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Slotted Aloha Capacity for 2 Nodes:  0.375
+# Slotted Aloha Capacity for 3 Nodes:  0.1454
+# Slotted Aloha Capacity for 4 Nodes:  0.0453
+# Slotted Aloha Capacity for 8 Nodes:  0.0004
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# b =                                  ** ** ** ** ** ** ** ** **    ** **                      ** ** ** ** ** ** ** ** ** **
-#
-# c = ** ** ** ** **                      ** ** ** ** ** **                      ** ** ** ** ** ** ** ** ** ** ** ** ** ** **
-#
-# d = ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **                            ** ** ** ** ** ** ** ** ** ** **
-#
-# Pure Aloha Capacity for 4 Nodes:  0.27386
-# Pure Aloha Capacity for 8 Nodes:  0.03328
-# Pure Aloha Capacity for 12 Nodes:  0.00348
-# Pure Aloha Capacity for 16 Nodes:  0.00012
-# ***********************
-#
-# **************** Slotted ALOHA (0.625) **************
-# t = 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
-#
-# a = ** ** ** ** **                                              ** ** ** ** ** ** ** ** ** ** ** ** ** ** **
-#
-# b =                ** ** ** ** **
-#
-# c = ** ** ** ** **                               ** ** ** ** **
-#
-# d =                                                             ** ** ** ** **                               ** ** ** ** **
-#
-# Slotted Aloha Capacity for 4 Nodes:  0.4095
-# Slotted Aloha Capacity for 8 Nodes:  0.1825
-# Slotted Aloha Capacity for 12 Nodes:  0.0571
-# Slotted Aloha Capacity for 16 Nodes:  0.0179
-# ***********************
-#
-# **************** Slotted ALOHA With Selfish Nodes (0.25) **************
-# t = 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
-#
-# a =                ** ** ** ** **                               ** ** ** ** **                ** ** ** ** ** ** ** ** ** **
-#
-# b =                               ** ** ** ** **
-#
-# s = ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **                            ** ** ** ** ** ** ** ** ** ** ** ** ** **
-#
-# s = ** ** ** ** ** ** ** ** ** ** **                                                    ** ** ** ** **
-#
-# Slotted Aloha - Selfish Node Capacity for 4 Nodes:  0.34124
-# Slotted Aloha - Selfish Node Capacity for 8 Nodes:  0.1244
-# Slotted Aloha - Selfish Node Capacity for 12 Nodes:  0.03618
-# Slotted Aloha - Selfish Node Capacity for 16 Nodes:  0.01008
-# ***********************
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Slotted ALOHA With Selfish Nodes (0.225) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# t = 01 02 03 04 05|06 07 08 09 10|11 12 13 14 15|16 17 18 19 20|21 22 23 24 25|26 27 28 29 30|31 32 33 34 35|36 37 38 39 40|
+# a = ** ** ** ** **|** ** ** ** **|              |** ** ** ** **|** ** ** ** **|** ** ** ** **|** ** ** ** **|              |
+# b = ** ** ** ** **|   ** ** ** **|** ** ** ** **|** ** ** ** **|** ** ** ** **|**    ** ** **|** ** ** ** **|** **         |
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Slotted Aloha - Selfish Node Capacity for 2 Nodes (1/1):  0.33436
+# Slotted Aloha - Selfish Node Capacity for 3 Nodes (2/1):  0.11298
+# Slotted Aloha - Selfish Node Capacity for 3 Nodes (1/2):  0.08884
+# Slotted Aloha - Selfish Node Capacity for 4 Nodes (3/1):  0.03674
+# Slotted Aloha - Selfish Node Capacity for 4 Nodes (2/2):  0.02818
+# Slotted Aloha - Selfish Node Capacity for 4 Nodes (1/3):  0.02164
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (7/1):  0.00042
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (6/2):  0.00016
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (5/3):  0.0002
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (4/4):  8e-05
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (3/5):  2e-05
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (2/6):  4e-05
+# Slotted Aloha - Selfish Node Capacity for 8 Nodes (1/7):  2e-05
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
